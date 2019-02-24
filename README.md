@@ -11,3 +11,9 @@
 #Original Author: Ahmad @ Ebryx LLC\
 #Description: FASTIR for Windows OS\
 #Usage: run with admin winexir.py
+
+# 3. lies.py
+#Original Author: UK @ Ebryx LLC\
+#Description: A script to ingest IOC scanner result files to ES in bulk\
+#Usage: lies.py\
+#Change variable parameters in the script enclosed in <>
