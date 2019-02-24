@@ -1,4 +1,4 @@
-# Quick & Dirty DFIR Scripts developed by Ebryx DFIR team to keep handy during field assignments
+# Quick & Dirty DFIR Scripts
 
 # 1. exvt.py
 #Original Author: Makman @ Ebryx LLC\
