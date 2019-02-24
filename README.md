@@ -10,4 +10,4 @@
 # 2. win-exir.bat
 #Original Author: Ahmad @ Ebryx LLC\
 #Description: FASTIR for Windows OS\
-#Usage: run with admin winexir.py\
+#Usage: run with admin winexir.py
