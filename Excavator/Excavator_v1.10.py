@@ -40,7 +40,12 @@ def evt_to_xml(path,file):
 			print('[-] Unable to execute command!')
 			exit()
 
-def validate_event(event):
+def remove_exceptions(event):
+	if '' in event:
+		event = event.replace('','')
+	return event
+
+def arrange_event(event):
 	#print the log that is parsed form XML before editing anything
 	#print(event)
 	if ('EventData' in event['Event']) and not (event['Event']['EventData'] == None):
@@ -48,6 +53,15 @@ def validate_event(event):
 			if not ('@Name' in event['Event']['EventData']['Data']):
 				try:
 					event['Event']['EventData']['Data'][0]['@Name']
+					data = event['Event']['EventData']['Data']
+					event['Event']['EventData']['Data'] = {}
+					for iteration in range(0,len(data)):
+						key = data[iteration]['@Name']
+						if '#text' in data[iteration]:
+							value = data[iteration]['#text']
+						else:
+							value = '-'
+						event['Event']['EventData']['Data'][key] = value
 				except:
 					group_data = [{'@Name': 'param1', '#text': str(event['Event']['EventData']['Data'])}]
 					event['Event']['EventData']['Data'] = group_data
@@ -58,8 +72,6 @@ def validate_event(event):
 			except:
 				group_data = {'@Qualifiers': 'Unknown', '#text': event['Event']['System']['EventID']}
 				event['Event']['System']['EventID'] = group_data
-	#print the event log that is not being sent to ELK
-	#print(event)
 	return event
 
 def push_to_elk(ip,port,index,user,pwd,bulk,scheme):
@@ -69,7 +81,7 @@ def push_to_elk(ip,port,index,user,pwd,bulk,scheme):
 	else:
 		elk = Elasticsearch(ip,http_auth=(user,pwd),scheme=scheme,port=port,)
 	try:
-		helpers.bulk(elk, bulk)
+		response = helpers.bulk(elk, bulk)
 		return True
 	except Exception as exception:
 		print('[~] ELK ingestion error')
@@ -83,6 +95,9 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 	if file == '*':
 		for file in os.listdir(path):
 			if file.endswith('.xml'):
+				print("\n------------------------------")
+				print(file)
+				print("------------------------------\n")
 				with open(path+'\\'+file) as opened_file:
 					events = opened_file.readlines()
 					jump=0 
@@ -96,8 +111,13 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 							jump=jump+1
 							event = event + '' + events[line_num]
 						event = event.replace('\n','')
-						event = json.loads(json.dumps(xmltodict.parse(event)))
-						event = validate_event(event)
+						event = remove_exceptions(event)
+						try:
+							event = json.loads(json.dumps(xmltodict.parse(event)))
+						except exception:
+							print("Successfull Event: " + successful_events)
+							print(exception)
+						event = arrange_event(event)
 						successful_events=successful_events+1
 						if action == 'send':
 							bulk.append({
@@ -121,6 +141,9 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 	else:
 		bulk = []
 		if file.endswith('.xml'):
+			print("\n------------------------------")
+			print(file)
+			print("------------------------------\n")
 			with open(path+'\\'+file) as opened_file:
 				events = opened_file.readlines()
 				jump=0 
@@ -134,8 +157,13 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 						jump=jump+1
 						event = event + '' + events[line_num]
 					event = event.replace('\n','')
-					event = json.loads(json.dumps(xmltodict.parse(event)))
-					event = validate_event(event)
+					event = remove_exceptions(event)
+					try:
+						event = json.loads(json.dumps(xmltodict.parse(event)))
+					except exception:
+						print("Successfull Event: " + successful_events)
+						print(exception)
+					event = arrange_event(event)
 					successful_events=successful_events+1
 					if action == 'send' or action == 'auto':
 						bulk.append({
