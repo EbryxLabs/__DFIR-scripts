@@ -1,4 +1,3 @@
-
 # Excavator
 
 *A light-weight tool to parse Windows event-logs to XML and send them to ELK*
