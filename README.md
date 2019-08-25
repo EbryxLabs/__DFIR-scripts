@@ -16,9 +16,14 @@
 # 3. win-exir.bat
 #Original Author: Ahmad @ Ebryx LLC\
 #Description: Let's just say its FASTIRfor Windows OS\
-#Usage: run with admin winexir.py
+#Usage: run with admin winexir.bat
 
-# 4. lies.py
+# 4. eXir.bat
+#Original Author: Ishaq & Dan @ Ebryx LLC\
+#Description: Inspired by FASTIR but better\
+#Usage: run with sudo exir.py
+
+# 5. lies.py
 #Original Author: UK @ Ebryx LLC\
 #Description: A script to ingest IOC scanner result files to ES in bulk\
 #Usage: lies.py\
