@@ -18,7 +18,7 @@
 #Description: Let's just say its FASTIRfor Windows OS\
 #Usage: run with admin winexir.bat
 
-# 4. eXir.bat
+# 4. eXir.py
 #Original Author: Ishaq & Dan @ Ebryx LLC\
 #Description: Inspired by FASTIR but better\
 #Usage: run with sudo exir.py
