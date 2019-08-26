@@ -3,7 +3,7 @@
 
 
 ##############################################################
-# Copyrights reserved by Ebryx LLC - www.ebryx.com © 2019
+# Copyleft by Ebryx LLC - www.ebryx.com © 2019
 ##############################################################
 
 mkdir ~/artifacts
@@ -21,7 +21,7 @@ touch ~/artifacts/1.1_$dt.txt
 
 
 echo "##############################################################"
-echo "# Copyrights reserved by Ebryx LLC - www.ebryx.com © 2019"
+echo "# Copyleft by Ebryx LLC - www.ebryx.com © 2019"
 echo "##############################################################"
 
 
