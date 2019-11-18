@@ -1,4 +1,4 @@
-#Excavator
+#Excavator.py
 
 import os
 import sys
@@ -8,6 +8,42 @@ import re
 import json
 import xmltodict
 from elasticsearch import Elasticsearch, helpers
+from datetime import datetime
+from pprint import pprint
+
+
+##global vars##
+global_vars = {
+	'time_start': '',
+	'time_end': '',
+	'files':{
+		'successful': {
+			'files': {
+				#'name': 'error'
+			},
+			'count': 0
+		},
+		'unsuccessful': {
+			'files': {
+				#'name': 'error'
+			}, 
+			'count': 0
+		}
+	}
+}
+###
+
+def summarize():
+	pprint(global_vars['files'])
+	# print('[+] Successful results:')
+	# print(f"[+] Successful results:\n\t{global_vars['files']['successful']['files']}\n\t{global_vars['files']['successful']['count']}")
+	# print(f"[-] Unsuccessful results:\n\t{global_vars['files']['unsuccessful']['files']}\n\t{global_vars['files']['unsuccessful']['count']}")
+
+def set_slashes_based_on_os():
+	ret = '\\'
+	if os.name != 'nt':
+		ret = '/'
+	return ret
 
 #perform a sanity check on OS
 def check_os():
@@ -21,27 +57,44 @@ def check_os():
 def evt_to_xml(path,file):
 	#check if running on windows
 	check_os()
-	#define scope of filess
+	#define scope of files
 	if file == '*':
 		for file in os.listdir(path):
 			if file.endswith('.evtx'):
 				print('[+] ' + file)
 				try:
-					check_output('wevtutil qe ' + path + '\\' + file + ' /lf:true /f:XML >> ' + path + '\\' + file + '.xml', shell=True)
+					check_output('wevtutil qe ' + path + set_slashes_based_on_os() + file + ' /lf:true /f:XML >> ' + path + set_slashes_based_on_os() + file + '.xml', shell=True)
 				except Exception as exception:
 					print('[~] ',exception)
 					print('[-] Unable to execute command!')
 	else:
 		print('[+] ' + file)
 		try:
-			check_output('wevtutil qe ' + path + '\\' + file + ' /lf:true /f:XML >> ' + path + '\\' + file + '.xml', shell=True)
+			check_output('wevtutil qe ' + path + set_slashes_based_on_os() + file + ' /lf:true /f:XML >> ' + path + set_slashes_based_on_os() + file + '.xml', shell=True)
 		except Exception as exception:
 			print('[~] ',exception)
 			print('[-] Unable to execute command!')
 			exit()
 
+#correct structure of the data field
+def correct_data_field_structure(event):
+	data = {}
+	try:
+		if ('Data' in event['Event']['EventData']) and not (event['Event']['EventData']['Data'] == None):
+			for field in range(0,len(event['Event']['EventData']['Data'])):
+				field_name = event['Event']['EventData']['Data'][field]['@Name']
+				try:
+					text = event['Event']['EventData']['Data'][field]['#text']
+				except:
+					text = '-'
+				data[field_name] = text
+	except:
+		return event
+	event['Event']['EventData']['Data'] = data	
+	return event
+
 def validate_event(event):
-	#print the log that is parsed form XML before editing anything
+	#print the log that is parsed from XML before editing anything
 	#print(event)
 	if ('EventData' in event['Event']) and not (event['Event']['EventData'] == None):
 		if ('Data' in event['Event']['EventData']) and not (event['Event']['EventData']['Data'] == None):
@@ -58,8 +111,11 @@ def validate_event(event):
 			except:
 				group_data = {'@Qualifiers': 'Unknown', '#text': event['Event']['System']['EventID']}
 				event['Event']['System']['EventID'] = group_data
+	
+
 	#print the event log that is not being sent to ELK
-	#print(event)
+	# print(event)
+
 	return event
 
 def push_to_elk(ip,port,index,user,pwd,bulk,scheme):
@@ -83,7 +139,97 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 	if file == '*':
 		for file in os.listdir(path):
 			if file.endswith('.xml'):
-				with open(path+'\\'+file) as opened_file:
+				try:
+					with open(path+set_slashes_based_on_os()+file) as opened_file:
+						events = opened_file.readlines()
+						jump=0
+						for line_num in range(0,len(events)):
+							
+							if(jump>0):
+								jump=jump-1
+								continue
+							event = events[line_num]
+
+							# Joins all broken XML parts to form one complete event!
+							while not ('<Event' in event and '</Event>' in event):
+								line_num = line_num+1
+								jump=jump+1
+								event = event + '' + events[line_num]
+							
+							eventList = []
+							tempList = []
+							event = event.replace('\n','')
+							event = event.replace('\t', '')
+							event = event.lstrip("--")
+
+							# Two events are considered to be one... break them apart!
+							if (event.count('</Event><Event')) > 0:
+								event = event.replace('</Event><Event ', '</Event>\n<Event ')
+								eventList = event.split("\n")
+							
+							# Formatting issue - tags aren't closed properly
+							elif (event.count('--')) > 0:
+
+								# Remove all prepended "--" from the event (formatting issue)
+								tempList = event.split("--")
+
+								for event in tempList:	
+									if event == "":
+										continue
+								
+									# Close the tag!
+									if not event.endswith("</Event>"):
+										event = event.rstrip() + "</Data></EventData></Event>"
+										eventList.append(event)
+									
+									# Already closed, proceed...
+									else:
+										eventList.append(event)
+									
+							# No formatting issue... proceed.						
+							else:
+								eventList.append(event)
+							
+							for event in eventList:
+								if event == "":
+									continue
+								
+								event = json.loads(json.dumps(xmltodict.parse(event)))
+								event = validate_event(event)
+								event = correct_data_field_structure(event)
+								successful_events=successful_events+1
+							
+								if action == 'send':
+									bulk.append({
+										"_index": index,
+										"_type": index,
+										"@timestamp": event['Event']['System']['TimeCreated']['@SystemTime'],
+										"body": event
+										})
+									if (len(bulk) == size):
+										print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
+										logs_sent = False
+										#keep looping until the bulked logs have not been sent successfully
+										while not logs_sent:
+											logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
+											if logs_sent:
+												bulk = []
+											else:
+												continue
+								elif action == 'json':
+									print(json.dumps(event, indent=4))
+					global_vars['files']['successful']['count'] += 1
+					global_vars['files']['successful']['files'][file] = ''
+				except Exception as e:
+					print(f'[-] Exception {e} was generated for file {file}')
+					global_vars['files']['unsuccessful']['count'] += 1
+					global_vars['files']['unsuccessful']['files'][file] = e
+	else:
+		bulk = []
+		if file.endswith('.xml'):
+			try:
+				line_num = 0
+				with open(path+set_slashes_based_on_os()+file, 'r') as opened_file:
 					events = opened_file.readlines()
 					jump=0 
 					for line_num in range(0,len(events)):
@@ -91,72 +237,82 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 							jump=jump-1
 							continue
 						event = events[line_num]
+
 						while not ('<Event' in event and '</Event>' in event):
+							#print('Inside event')
 							line_num = line_num+1
 							jump=jump+1
 							event = event + '' + events[line_num]
+					
+						eventList = []
+						tempList = []
 						event = event.replace('\n','')
-						event = json.loads(json.dumps(xmltodict.parse(event)))
-						event = validate_event(event)
-						successful_events=successful_events+1
-						if action == 'send':
-							bulk.append({
-								"_index": index,
-								"_type": index,
-								"@timestamp": event['Event']['System']['TimeCreated']['@SystemTime'],
-								"body": event
-								})
-							if (len(bulk) == size):
-								print('[~] Sending Logs to ELK: ' + str(successful_events))
-								logs_sent = False
-								#keep looping until the bulked logs have not been sent successfully
-								while not logs_sent:
-									logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
-									if logs_sent:
-										bulk = []
-									else:
-										continue
-						elif action == 'json':
-							print(json.dumps(event, indent=4))
-	else:
-		bulk = []
-		if file.endswith('.xml'):
-			with open(path+'\\'+file) as opened_file:
-				events = opened_file.readlines()
-				jump=0 
-				for line_num in range(0,len(events)):
-					if(jump>0):
-						jump=jump-1
-						continue
-					event = events[line_num]
-					while not ('<Event' in event and '</Event>' in event):
-						line_num = line_num+1
-						jump=jump+1
-						event = event + '' + events[line_num]
-					event = event.replace('\n','')
-					event = json.loads(json.dumps(xmltodict.parse(event)))
-					event = validate_event(event)
-					successful_events=successful_events+1
-					if action == 'send' or action == 'auto':
-						bulk.append({
-							"_index": index,
-							"_type": index,
-							"@timestamp": event['Event']['System']['TimeCreated']['@SystemTime'],
-							"body": event
-							})
-						if (len(bulk) == size):
-							print('[~] Sending Logs to ELK: ' + str(successful_events))
-							logs_sent = False
-							#keep looping until the bulked logs have not been sent successfully
-							while not logs_sent:
-								logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
-								if logs_sent:
-									bulk = []
-								else:
+						event = event.replace('\t', '')
+						event = event.lstrip("--")
+
+						# Two events are considered to be one... break them apart!
+						if (event.count('</Event><Event')) > 0:
+							event = event.replace('</Event><Event ', '</Event>\n<Event ')
+							eventList = event.split("\n")
+						
+						# Formatting issue - tags aren't closed properly
+						elif (event.count('--')) > 0:
+
+							# Remove all prepended "--" from the event (formatting issue)
+							tempList = event.split("--")
+
+							for event in tempList:	
+								if event == "":
 									continue
-					elif action == 'json':
-						print(json.dumps(event, indent=4))
-	print('[~] Sending Logs to ELK: ' + str(successful_events))
+							
+								# Close the tag!
+								if not event.endswith("</Event>"):
+									event = event.rstrip() + "</Data></EventData></Event>"
+									eventList.append(event)
+								
+								# Already closed, proceed...
+								else:
+									eventList.append(event)
+								
+						# No formatting issue... proceed.						
+						else:
+							eventList.append(event)
+						
+						for event in eventList:
+							if event == "":
+								continue
+
+							event = json.loads(json.dumps(xmltodict.parse(event)))
+							event = validate_event(event)
+							event = correct_data_field_structure(event)
+							successful_events=successful_events+1
+
+							if action == 'send' or action == 'auto':
+								bulk.append({
+									"_index": index,
+									"_type": index,
+									"@timestamp": event['Event']['System']['TimeCreated']['@SystemTime'],
+									"body": event
+									})
+								if (len(bulk) == size):
+									print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
+									logs_sent = False
+									#keep looping until the bulked logs have not been sent successfully
+									while not logs_sent:
+										logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
+										if logs_sent:
+											bulk = []
+										else:
+											continue
+							elif action == 'json':
+								print(json.dumps(event, indent=4))
+				global_vars['files']['successful']['count'] += 1
+				global_vars['files']['successful']['files'][file] = ''
+			except Exception as e:
+				print(f'[-] Exception {e} was generated for file {file} at line_num {line_num}')
+				global_vars['files']['unsuccessful']['count'] += 1
+				global_vars['files']['unsuccessful']['files'][file] = e
+	print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
 	logs_sent = False
 	logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
 	#keep looping until the bulked logs have not been sent successfully
@@ -191,7 +347,7 @@ def sanity_check(action,path,ip,file,scheme):
 		print('[-] Specified path does not exist')
 		exit()
 	if file != '*':
-		if not os.path.isfile(path + '\\' + file):
+		if not os.path.isfile(path + set_slashes_based_on_os() + file):
 			print('[-] Specified file does not exist')
 			exit()
 	if not ip and (action=='auto' or action=='send'):
@@ -208,6 +364,8 @@ def sanity_check(action,path,ip,file,scheme):
 
 #main
 if __name__ == '__main__':
+	global_vars["time_start"] = datetime.now()
+	print(f'[~] Time of start: {global_vars["time_start"]}')
 	parser = argparse.ArgumentParser('Excavator.py')
 	parser.add_argument('-m', metavar='<action>', type=str, help='auto, json, send, xml')
 	parser.add_argument('-p', metavar='<path>', type=str, help='path to Evtx files')
@@ -225,3 +383,8 @@ if __name__ == '__main__':
 	args = parser.parse_args()
 	sanity_check(args.m,args.p,args.ip,args.f,args.scheme)
 	process(args.m,args.p,args.ip,args.port,args.f,args.i,args.user,args.pwd,args.s,args.scheme)
+	summarize()
+	print(f'[~] Time of start: {global_vars["time_start"]}')
+	global_vars["time_end"] = datetime.now()
+	print(f'[~] Time end: {global_vars["time_end"]}')
+	print(f'[~] Time difference: {global_vars["time_end"]-global_vars["time_start"]}')
