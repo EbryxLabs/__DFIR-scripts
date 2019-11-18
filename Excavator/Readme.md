@@ -28,6 +28,7 @@ __How Exacavtor Works:__
 - Uses windows' own utility __wevtutil__ to parse the event-logs to XML
 - Requires *xmltodict* for converting the logs form XML to JSON
 - Requires *elasticsearch* to push the event-logs to your ELK
+- Windows platform is a must for converting logs to xml we use windows' own utility for that
 
 *NOTE: Excavator saves the XML files in the same directory after converting them from EVTX*
 
@@ -74,7 +75,3 @@ python Excavator.py -m send -p <path_to_directory> -f <filename.evtx> -ip <elast
 ```
 python Excavator.py -m auto -p <path_to_directory> -f <filename.evtx> -ip <elasticsearch_IP> -port <elasticsearch_port> -user <elasticsearch_user> -pwd <elasticsearch_password>
 ```
-
-## Future Improvement:
-
-- We will be improving Excavator it in future however, if you want to cater for any exception in event-logs that causes __ELK ingestion error__ by yourself, then you can add it in __validate_event()__
