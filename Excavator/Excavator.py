@@ -187,13 +187,18 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 									# Broke it at a wrong end... this was a legit '--' in text
 									# rejoin it
 									if not event.startswith('<Event '):
-										event = '--' + event
-										try:
-											newEvt = tempList[elNo-1] + event
-											eventList.append(newEvt)
-										except:
-											# print(tempList[elNo])
-											eventList.append(tempList[elNo])
+										correctedEvt = '--'.join(tempList)
+										eventList.append(correctedEvt)
+										break
+										# event = '--' + event
+										# try:
+										# 	i = elNo-1
+										# 	while tempList[i].
+										# 	newEvt = tempList[elNo-1] + event
+										# 	eventList.append(newEvt)
+										# except:
+										# 	# print(tempList[elNo])
+										# 	eventList.append(tempList[elNo])
 										
 									# Close the tag!
 									elif not event.endswith("</Event>"):
@@ -209,7 +214,7 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 									# Already closed, proceed...
 									else:
 										eventList.append(event)
-									
+										
 							# No formatting issue... proceed.						
 							else:
 								eventList.append(event)
@@ -301,13 +306,18 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 								# Broke it at a wrong end... this was a legit '--' in text
 								# rejoin it
 								if not event.startswith('<Event '):
-									event = '--' + event
-									try:
-										newEvt = tempList[elNo-1] + event
-										eventList.append(newEvt)
-									except:
-										# print(tempList[elNo])
-										eventList.append(tempList[elNo])
+									correctedEvt = '--'.join(tempList)
+									eventList.append(correctedEvt)
+									break
+									# event = '--' + event
+									# try:
+									# 	i = elNo-1
+									# 	while tempList[i].
+									# 	newEvt = tempList[elNo-1] + event
+									# 	eventList.append(newEvt)
+									# except:
+									# 	# print(tempList[elNo])
+									# 	eventList.append(tempList[elNo])
 									
 								# Close the tag!
 								elif not event.endswith("</Event>"):
