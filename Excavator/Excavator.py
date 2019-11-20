@@ -111,8 +111,7 @@ def validate_event(event):
 			except:
 				group_data = {'@Qualifiers': 'Unknown', '#text': event['Event']['System']['EventID']}
 				event['Event']['System']['EventID'] = group_data
-	
-
+			
 	#print the event log that is not being sent to ELK
 	# print(event)
 
@@ -158,7 +157,15 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 							
 							eventList = []
 							tempList = []
+
+							# All whitespace, tabbing, and special characters can't be processed. Replace them!
+							
+							# Tabular formats produce this format which is not parseable.
+							event = event.replace('-----', '')
+							event = event.replace('---', '')
 							event = event.replace('\n','')
+							#Special characters aren't parseable
+							event = event.replace('', 'X')
 							event = event.replace('\t', '')
 							event = event.lstrip("--")
 
@@ -173,19 +180,41 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 								# Remove all prepended "--" from the event (formatting issue)
 								tempList = event.split("--")
 
-								for event in tempList:	
+								for elNo, event in enumerate(tempList):	
 									if event == "":
 										continue
-								
+
+									# Broke it at a wrong end... this was a legit '--' in text
+									# rejoin it
+									if not event.startswith('<Event '):
+										correctedEvt = '--'.join(tempList)
+										eventList.append(correctedEvt)
+										break
+										# event = '--' + event
+										# try:
+										# 	i = elNo-1
+										# 	while tempList[i].
+										# 	newEvt = tempList[elNo-1] + event
+										# 	eventList.append(newEvt)
+										# except:
+										# 	# print(tempList[elNo])
+										# 	eventList.append(tempList[elNo])
+										
 									# Close the tag!
-									if not event.endswith("</Event>"):
-										event = event.rstrip() + "</Data></EventData></Event>"
-										eventList.append(event)
-									
+									elif not event.endswith("</Event>"):
+										try:
+											if not tempList[elNo+1].startswith('<Event '):
+												continue
+											else:
+												event = event.rstrip() + "</Data></EventData></Event>"
+												eventList.append(event)
+										except:
+											event = event.rstrip() + "</Data></EventData></Event>"
+											eventList.append(event)	
 									# Already closed, proceed...
 									else:
 										eventList.append(event)
-									
+										
 							# No formatting issue... proceed.						
 							else:
 								eventList.append(event)
@@ -193,7 +222,8 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 							for event in eventList:
 								if event == "":
 									continue
-								
+
+
 								event = json.loads(json.dumps(xmltodict.parse(event)))
 								event = validate_event(event)
 								event = correct_data_field_structure(event)
@@ -246,7 +276,15 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 					
 						eventList = []
 						tempList = []
+
+						# All whitespace, tabbing, and special characters can't be processed. Replace them!
+						
+						# Tabular formats produce this format which is not parseable.
+						event = event.replace('-----', '')
+						event = event.replace('---', '')
 						event = event.replace('\n','')
+						#Special characters aren't parseable
+						event = event.replace('', 'X')
 						event = event.replace('\t', '')
 						event = event.lstrip("--")
 
@@ -261,15 +299,37 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 							# Remove all prepended "--" from the event (formatting issue)
 							tempList = event.split("--")
 
-							for event in tempList:	
+							for elNo, event in enumerate(tempList):	
 								if event == "":
 									continue
-							
+
+								# Broke it at a wrong end... this was a legit '--' in text
+								# rejoin it
+								if not event.startswith('<Event '):
+									correctedEvt = '--'.join(tempList)
+									eventList.append(correctedEvt)
+									break
+									# event = '--' + event
+									# try:
+									# 	i = elNo-1
+									# 	while tempList[i].
+									# 	newEvt = tempList[elNo-1] + event
+									# 	eventList.append(newEvt)
+									# except:
+									# 	# print(tempList[elNo])
+									# 	eventList.append(tempList[elNo])
+									
 								# Close the tag!
-								if not event.endswith("</Event>"):
-									event = event.rstrip() + "</Data></EventData></Event>"
-									eventList.append(event)
-								
+								elif not event.endswith("</Event>"):
+									try:
+										if not tempList[elNo+1].startswith('<Event '):
+											continue
+										else:
+											event = event.rstrip() + "</Data></EventData></Event>"
+											eventList.append(event)
+									except:
+										event = event.rstrip() + "</Data></EventData></Event>"
+										eventList.append(event)	
 								# Already closed, proceed...
 								else:
 									eventList.append(event)
@@ -281,6 +341,7 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 						for event in eventList:
 							if event == "":
 								continue
+
 
 							event = json.loads(json.dumps(xmltodict.parse(event)))
 							event = validate_event(event)
