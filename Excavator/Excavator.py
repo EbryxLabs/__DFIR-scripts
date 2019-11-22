@@ -111,7 +111,7 @@ def validate_event(event):
 			except:
 				group_data = {'@Qualifiers': 'Unknown', '#text': event['Event']['System']['EventID']}
 				event['Event']['System']['EventID'] = group_data
-			
+
 	#print the event log that is not being sent to ELK
 	# print(event)
 
@@ -140,90 +140,51 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 			if file.endswith('.xml'):
 				try:
 					with open(path+set_slashes_based_on_os()+file) as opened_file:
-						events = opened_file.readlines()
-						jump=0
-						for line_num in range(0,len(events)):
-							
-							if(jump>0):
-								jump=jump-1
+						eventlog_maker = ""
+						for eventlog in opened_file:
+							# Joins all broken XML parts to form one complete eventlog!
+							eventlog_maker+=eventlog
+							if not ('<Event' in eventlog_maker and '</Event>' in eventlog_maker):
 								continue
-							event = events[line_num]
-
-							# Joins all broken XML parts to form one complete event!
-							while not ('<Event' in event and '</Event>' in event):
-								line_num = line_num+1
-								jump=jump+1
-								event = event + '' + events[line_num]
-							
+							eventlog = eventlog_maker
 							eventList = []
 							tempList = []
-
-							# All whitespace, tabbing, and special characters can't be processed. Replace them!
-							
-							# Tabular formats produce this format which is not parseable.
-							event = event.replace('-----', '')
-							event = event.replace('---', '')
-							event = event.replace('\n','')
-							#Special characters aren't parseable
-							event = event.replace('', 'X')
-							event = event.replace('\t', '')
-							event = event.lstrip("--")
+							eventlog = eventlog.replace('\n','')
+							eventlog = eventlog.replace('\t', '')
+							eventlog = eventlog.lstrip("--")
 
 							# Two events are considered to be one... break them apart!
-							if (event.count('</Event><Event')) > 0:
-								event = event.replace('</Event><Event ', '</Event>\n<Event ')
-								eventList = event.split("\n")
+							if (eventlog.count('</Event><Event')) > 0:
+								eventlog = eventlog.replace('</Event><Event ', '</Event>\n<Event ')
+								eventList = eventlog.split("\n")
 							
 							# Formatting issue - tags aren't closed properly
-							elif (event.count('--')) > 0:
+							elif (eventlog.count('--')) > 0:
 
 								# Remove all prepended "--" from the event (formatting issue)
-								tempList = event.split("--")
+								tempList = eventlog.split("--")
 
-								for elNo, event in enumerate(tempList):	
-									if event == "":
+								for eventlog in tempList:	
+									if eventlog == "":
 										continue
-
-									# Broke it at a wrong end... this was a legit '--' in text
-									# rejoin it
-									if not event.startswith('<Event '):
-										correctedEvt = '--'.join(tempList)
-										eventList.append(correctedEvt)
-										break
-										# event = '--' + event
-										# try:
-										# 	i = elNo-1
-										# 	while tempList[i].
-										# 	newEvt = tempList[elNo-1] + event
-										# 	eventList.append(newEvt)
-										# except:
-										# 	# print(tempList[elNo])
-										# 	eventList.append(tempList[elNo])
-										
+								
 									# Close the tag!
-									elif not event.endswith("</Event>"):
-										try:
-											if not tempList[elNo+1].startswith('<Event '):
-												continue
-											else:
-												event = event.rstrip() + "</Data></EventData></Event>"
-												eventList.append(event)
-										except:
-											event = event.rstrip() + "</Data></EventData></Event>"
-											eventList.append(event)	
+									if not eventlog.endswith("</Event>"):
+										eventlog = eventlog.rstrip() + "</Data></EventData></Event>"
+										eventList.append(eventlog)
+									
 									# Already closed, proceed...
 									else:
-										eventList.append(event)
-										
+										eventList.append(eventlog)
+									
 							# No formatting issue... proceed.						
 							else:
-								eventList.append(event)
+								eventList.append(eventlog)
 							
 							for event in eventList:
 								if event == "":
 									continue
-
-
+								
 								event = json.loads(json.dumps(xmltodict.parse(event)))
 								event = validate_event(event)
 								event = correct_data_field_structure(event)
@@ -248,6 +209,7 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 												continue
 								elif action == 'json':
 									print(json.dumps(event, indent=4))
+							eventlog_maker = ""
 					global_vars['files']['successful']['count'] += 1
 					global_vars['files']['successful']['files'][file] = ''
 				except Exception as e:
@@ -258,115 +220,77 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 		bulk = []
 		if file.endswith('.xml'):
 			try:
-				line_num = 0
-				with open(path+set_slashes_based_on_os()+file, 'r') as opened_file:
-					events = opened_file.readlines()
-					jump=0 
-					for line_num in range(0,len(events)):
-						if(jump>0):
-							jump=jump-1
-							continue
-						event = events[line_num]
+				with open(path+set_slashes_based_on_os()+file) as opened_file:
+						eventlog_maker = ""
+						for eventlog in opened_file:
+							# Joins all broken XML parts to form one complete eventlog!
+							eventlog_maker+=eventlog
+							if not ('<Event' in eventlog_maker and '</Event>' in eventlog_maker):
+								continue
+							eventlog = eventlog_maker
+							eventList = []
+							tempList = []
+							eventlog = eventlog.replace('\n','')
+							eventlog = eventlog.replace('\t', '')
+							eventlog = eventlog.lstrip("--")
 
-						while not ('<Event' in event and '</Event>' in event):
-							#print('Inside event')
-							line_num = line_num+1
-							jump=jump+1
-							event = event + '' + events[line_num]
-					
-						eventList = []
-						tempList = []
+							# Two events are considered to be one... break them apart!
+							if (eventlog.count('</Event><Event')) > 0:
+								eventlog = eventlog.replace('</Event><Event ', '</Event>\n<Event ')
+								eventList = eventlog.split("\n")
+							
+							# Formatting issue - tags aren't closed properly
+							elif (eventlog.count('--')) > 0:
 
-						# All whitespace, tabbing, and special characters can't be processed. Replace them!
-						
-						# Tabular formats produce this format which is not parseable.
-						event = event.replace('-----', '')
-						event = event.replace('---', '')
-						event = event.replace('\n','')
-						#Special characters aren't parseable
-						event = event.replace('', 'X')
-						event = event.replace('\t', '')
-						event = event.lstrip("--")
+								# Remove all prepended "--" from the event (formatting issue)
+								tempList = eventlog.split("--")
 
-						# Two events are considered to be one... break them apart!
-						if (event.count('</Event><Event')) > 0:
-							event = event.replace('</Event><Event ', '</Event>\n<Event ')
-							eventList = event.split("\n")
-						
-						# Formatting issue - tags aren't closed properly
-						elif (event.count('--')) > 0:
-
-							# Remove all prepended "--" from the event (formatting issue)
-							tempList = event.split("--")
-
-							for elNo, event in enumerate(tempList):	
+								for eventlog in tempList:	
+									if eventlog == "":
+										continue
+								
+									# Close the tag!
+									if not eventlog.endswith("</Event>"):
+										eventlog = eventlog.rstrip() + "</Data></EventData></Event>"
+										eventList.append(eventlog)
+									
+									# Already closed, proceed...
+									else:
+										eventList.append(eventlog)
+									
+							# No formatting issue... proceed.						
+							else:
+								eventList.append(eventlog)
+							
+							for event in eventList:
 								if event == "":
 									continue
-
-								# Broke it at a wrong end... this was a legit '--' in text
-								# rejoin it
-								if not event.startswith('<Event '):
-									correctedEvt = '--'.join(tempList)
-									eventList.append(correctedEvt)
-									break
-									# event = '--' + event
-									# try:
-									# 	i = elNo-1
-									# 	while tempList[i].
-									# 	newEvt = tempList[elNo-1] + event
-									# 	eventList.append(newEvt)
-									# except:
-									# 	# print(tempList[elNo])
-									# 	eventList.append(tempList[elNo])
-									
-								# Close the tag!
-								elif not event.endswith("</Event>"):
-									try:
-										if not tempList[elNo+1].startswith('<Event '):
-											continue
-										else:
-											event = event.rstrip() + "</Data></EventData></Event>"
-											eventList.append(event)
-									except:
-										event = event.rstrip() + "</Data></EventData></Event>"
-										eventList.append(event)	
-								# Already closed, proceed...
-								else:
-									eventList.append(event)
 								
-						# No formatting issue... proceed.						
-						else:
-							eventList.append(event)
-						
-						for event in eventList:
-							if event == "":
-								continue
-
-
-							event = json.loads(json.dumps(xmltodict.parse(event)))
-							event = validate_event(event)
-							event = correct_data_field_structure(event)
-							successful_events=successful_events+1
-
-							if action == 'send' or action == 'auto':
-								bulk.append({
-									"_index": index,
-									"_type": index,
-									"@timestamp": event['Event']['System']['TimeCreated']['@SystemTime'],
-									"body": event
-									})
-								if (len(bulk) == size):
-									print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
-									logs_sent = False
-									#keep looping until the bulked logs have not been sent successfully
-									while not logs_sent:
-										logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
-										if logs_sent:
-											bulk = []
-										else:
-											continue
-							elif action == 'json':
-								print(json.dumps(event, indent=4))
+								event = json.loads(json.dumps(xmltodict.parse(event)))
+								event = validate_event(event)
+								event = correct_data_field_structure(event)
+								successful_events=successful_events+1
+							
+								if action == 'send':
+									bulk.append({
+										"_index": index,
+										"_type": index,
+										"@timestamp": event['Event']['System']['TimeCreated']['@SystemTime'],
+										"body": event
+										})
+									if (len(bulk) == size):
+										print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
+										logs_sent = False
+										#keep looping until the bulked logs have not been sent successfully
+										while not logs_sent:
+											logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
+											if logs_sent:
+												bulk = []
+											else:
+												continue
+								elif action == 'json':
+									print(json.dumps(event, indent=4))
+							eventlog_maker = ""
 				global_vars['files']['successful']['count'] += 1
 				global_vars['files']['successful']['files'][file] = ''
 			except Exception as e:
