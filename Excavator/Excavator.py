@@ -131,6 +131,17 @@ def push_to_elk(ip,port,index,user,pwd,bulk,scheme):
 		print(exception)
 		return False
 
+def send_now(ip,port,index,user,pwd,bulk,scheme):
+	logs_sent = False
+	#keep looping until the bulked logs have not been sent successfully
+	while not logs_sent:
+		logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
+		if not logs_sent:
+			continue
+		else:
+			return []
+
+
 def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 	bulk = []
 	successful_events = 0
@@ -147,68 +158,22 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 							if not ('<Event' in eventlog_maker and '</Event>' in eventlog_maker):
 								continue
 							eventlog = eventlog_maker
-							eventList = []
-							tempList = []
-							eventlog = eventlog.replace('\n','')
-							eventlog = eventlog.replace('\t', '')
-							eventlog = eventlog.lstrip("--")
-
-							# Two events are considered to be one... break them apart!
-							if (eventlog.count('</Event><Event')) > 0:
-								eventlog = eventlog.replace('</Event><Event ', '</Event>\n<Event ')
-								eventList = eventlog.split("\n")
-							
-							# Formatting issue - tags aren't closed properly
-							elif (eventlog.count('--')) > 0:
-
-								# Remove all prepended "--" from the event (formatting issue)
-								tempList = eventlog.split("--")
-
-								for eventlog in tempList:	
-									if eventlog == "":
-										continue
-								
-									# Close the tag!
-									if not eventlog.endswith("</Event>"):
-										eventlog = eventlog.rstrip() + "</Data></EventData></Event>"
-										eventList.append(eventlog)
-									
-									# Already closed, proceed...
-									else:
-										eventList.append(eventlog)
-									
-							# No formatting issue... proceed.						
-							else:
-								eventList.append(eventlog)
-							
-							for event in eventList:
-								if event == "":
-									continue
-								
-								event = json.loads(json.dumps(xmltodict.parse(event)))
-								event = validate_event(event)
-								event = correct_data_field_structure(event)
-								successful_events=successful_events+1
-							
-								if action == 'send':
-									bulk.append({
-										"_index": index,
-										"_type": index,
-										"@timestamp": event['Event']['System']['TimeCreated']['@SystemTime'],
-										"body": event
-										})
-									if (len(bulk) == size):
-										print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
-										logs_sent = False
-										#keep looping until the bulked logs have not been sent successfully
-										while not logs_sent:
-											logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
-											if logs_sent:
-												bulk = []
-											else:
-												continue
-								elif action == 'json':
-									print(json.dumps(event, indent=4))
+							eventlog = json.loads(json.dumps(xmltodict.parse(eventlog)))
+							eventlog = validate_event(eventlog)
+							eventlog = correct_data_field_structure(eventlog)
+							successful_events=successful_events+1
+							if action == 'send':
+								bulk.append({
+									"_index": index,
+									"_type": index,
+									"@timestamp": eventlog['Event']['System']['TimeCreated']['@SystemTime'],
+									"body": eventlog
+									})
+								if (len(bulk) == size):
+									print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
+									bulk = send_now(ip,port,index,user,pwd,bulk,scheme)
+							elif action == 'json':
+								print(json.dumps(eventlog, indent=4))
 							eventlog_maker = ""
 					global_vars['files']['successful']['count'] += 1
 					global_vars['files']['successful']['files'][file] = ''
@@ -217,7 +182,6 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 					global_vars['files']['unsuccessful']['count'] += 1
 					global_vars['files']['unsuccessful']['files'][file] = e
 	else:
-		bulk = []
 		if file.endswith('.xml'):
 			try:
 				with open(path+set_slashes_based_on_os()+file) as opened_file:
@@ -228,68 +192,22 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 							if not ('<Event' in eventlog_maker and '</Event>' in eventlog_maker):
 								continue
 							eventlog = eventlog_maker
-							eventList = []
-							tempList = []
-							eventlog = eventlog.replace('\n','')
-							eventlog = eventlog.replace('\t', '')
-							eventlog = eventlog.lstrip("--")
-
-							# Two events are considered to be one... break them apart!
-							if (eventlog.count('</Event><Event')) > 0:
-								eventlog = eventlog.replace('</Event><Event ', '</Event>\n<Event ')
-								eventList = eventlog.split("\n")
-							
-							# Formatting issue - tags aren't closed properly
-							elif (eventlog.count('--')) > 0:
-
-								# Remove all prepended "--" from the event (formatting issue)
-								tempList = eventlog.split("--")
-
-								for eventlog in tempList:	
-									if eventlog == "":
-										continue
-								
-									# Close the tag!
-									if not eventlog.endswith("</Event>"):
-										eventlog = eventlog.rstrip() + "</Data></EventData></Event>"
-										eventList.append(eventlog)
-									
-									# Already closed, proceed...
-									else:
-										eventList.append(eventlog)
-									
-							# No formatting issue... proceed.						
-							else:
-								eventList.append(eventlog)
-							
-							for event in eventList:
-								if event == "":
-									continue
-								
-								event = json.loads(json.dumps(xmltodict.parse(event)))
-								event = validate_event(event)
-								event = correct_data_field_structure(event)
-								successful_events=successful_events+1
-							
-								if action == 'send':
-									bulk.append({
-										"_index": index,
-										"_type": index,
-										"@timestamp": event['Event']['System']['TimeCreated']['@SystemTime'],
-										"body": event
-										})
-									if (len(bulk) == size):
-										print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
-										logs_sent = False
-										#keep looping until the bulked logs have not been sent successfully
-										while not logs_sent:
-											logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
-											if logs_sent:
-												bulk = []
-											else:
-												continue
-								elif action == 'json':
-									print(json.dumps(event, indent=4))
+							eventlog = json.loads(json.dumps(xmltodict.parse(eventlog)))
+							eventlog = validate_event(eventlog)
+							eventlog = correct_data_field_structure(eventlog)
+							successful_events=successful_events+1
+							if action == 'send':
+								bulk.append({
+									"_index": index,
+									"_type": index,
+									"@timestamp": eventlog['Event']['System']['TimeCreated']['@SystemTime'],
+									"body": eventlog
+									})
+								if (len(bulk) == size):
+									print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
+									bulk = send_now(ip,port,index,user,pwd,bulk,scheme)
+							elif action == 'json':
+								print(json.dumps(eventlog, indent=4))
 							eventlog_maker = ""
 				global_vars['files']['successful']['count'] += 1
 				global_vars['files']['successful']['files'][file] = ''
@@ -297,16 +215,8 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 				print(f'[-] Exception {e} was generated for file {file} at line_num {line_num}')
 				global_vars['files']['unsuccessful']['count'] += 1
 				global_vars['files']['unsuccessful']['files'][file] = e
-	print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
-	logs_sent = False
-	logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
-	#keep looping until the bulked logs have not been sent successfully
-	while not logs_sent:
-		logs_sent = push_to_elk(ip,port,index,user,pwd,bulk,scheme)
-		if logs_sent:
-			bulk = []
-		else:
-			continue
+	print(f'[~] Elapsed Time: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
+	bulk = send_now(ip,port,index,user,pwd,bulk,scheme)
 	print('[+] Successfully processed the logs of file')
 
 def process(action,path,ip,port,file,index,user,pwd,size,scheme):
