@@ -210,9 +210,9 @@ def process(action,path,ip,port,file,index,user,pwd,size,scheme):
 	if (action == 'auto'):
 		print("[CAUTION] AUTO only works with windows!")
 		evt_to_xml(path,file)
-		# if not file == '*':
-		# 	if not file.endswith('.xml'):
-		# 		file = file + '.xml'
+		if not file == '*':
+			if not file.endswith('.xml'):
+				file = file + '.xml'
 		xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme)
 
 #Perform a sanity check on log path and IP address provided by user
