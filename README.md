@@ -13,10 +13,10 @@
 #If we comment line 110 .. It'll just check for the hash without uploading\
 #If we comment, 106 to 109 .. it'll upload everything .. and check for the results
 
-# 3. win-exir.bat
+# 3. exir-win.bat
 #Original Author: Ahmad @ Ebryx LLC\
 #Description: Let's just say its FASTIRfor Windows OS\
-#Usage: run with admin winexir.bat
+#Usage: run with admin exir<version>.bat
 
 # 4. eXir.py
 #Original Author: Ishaq & Dan @ Ebryx LLC\
