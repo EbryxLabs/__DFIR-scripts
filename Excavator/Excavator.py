@@ -1,19 +1,18 @@
 #Excavator.py
 
 import os
-import sys
-from subprocess import check_output
-import argparse
 import re
+import sys
 import json
+import argparse
 import xmltodict
-from elasticsearch import Elasticsearch, helpers
-from datetime import datetime
 from pprint import pprint
-
+from datetime import datetime
+from subprocess import check_output
+from elasticsearch import Elasticsearch, helpers
 
 ##global vars##
-global_vars = {
+status_details = {
 	'time_start': '',
 	'time_end': '',
 	'files':{
@@ -23,7 +22,7 @@ global_vars = {
 			},
 			'count': 0
 		},
-		'unsuccessful': {
+		'failed': {
 			'files': {
 				#'name': 'error'
 			}, 
@@ -34,47 +33,52 @@ global_vars = {
 ###
 
 def summarize():
-	pprint(global_vars['files'])
-	# print('[+] Successful results:')
-	# print(f"[+] Successful results:\n\t{global_vars['files']['successful']['files']}\n\t{global_vars['files']['successful']['count']}")
-	# print(f"[-] Unsuccessful results:\n\t{global_vars['files']['unsuccessful']['files']}\n\t{global_vars['files']['unsuccessful']['count']}")
-
-def set_slashes_based_on_os():
-	ret = '\\'
-	if os.name != 'nt':
-		ret = '/'
-	return ret
+	print(f"[INFO] Start Time: {status_details['time_start']}")
+	status_details["time_end"] = datetime.now()
+	print(f"[INFO] End Time: {status_details['time_end']}")
+	print(f"[INFO] Files sucessfully ingested: {status_details['files']['successful']['count']}")
+	print(f"[INFO] Files failed during ingestion: {status_details['files']['failed']['count']}")
+	print(f"[INFO] Following is the list of successful files {status_details['files']['successful']['files']}")
+	print(f"[INFO] Following is the list of failed files {status_details['files']['failed']['files']}")
+	print(f'[INFO] Time difference: {status_details["time_end"]-status_details["time_start"]}')
 
 #perform a sanity check on OS
-def check_os():
-	if os.name != 'nt':
-		print('[~] OS: Not Windows\n[-] Quitting!\n')
-		exit()
-	else:
-		print('[~] OS: Windows\n[+] All OK!\n')
+def check_os(condition):
+	if condition == "wevtutil":
+		if os.name != 'nt':
+			print('[INFO] OS: Not Windows\n[ERROR] Quitting!\n')
+			exit()
+		else:
+			print('[INFO] OS: Windows\n[SUCCESS] All OK!\n')
+	elif condition == "slashes":
+		slash = '\\'
+		if os.name != 'nt':
+			slash = '/'
+		return slash
+
+def convert(path,file):
+	print('[SUCCESS] ' + file)
+	try:
+		check_output('wevtutil qe ' + path + check_os("slashes") + file + ' /lf:true /f:XML >> ' + path + check_os("slashes") + file + '.xml', shell=True)
+		return True
+	except Exception as exception:
+		print('[INFO] ', exception)
+		print('[ERROR] Unable to execute command!')
+		return False
 
 #convert evtx files to xml
 def evt_to_xml(path,file):
 	#check if running on windows
-	check_os()
+	conversion_success = False
+	check_os("wevtutil")
 	#define scope of files
 	if file == '*':
 		for file in os.listdir(path):
 			if file.endswith('.evtx'):
-				print('[+] ' + file)
-				try:
-					check_output('wevtutil qe ' + path + set_slashes_based_on_os() + file + ' /lf:true /f:XML >> ' + path + set_slashes_based_on_os() + file + '.xml', shell=True)
-				except Exception as exception:
-					print('[~] ',exception)
-					print('[-] Unable to execute command!')
+				conversion_success = convert(path,file)
 	else:
-		print('[+] ' + file)
-		try:
-			check_output('wevtutil qe ' + path + set_slashes_based_on_os() + file + ' /lf:true /f:XML >> ' + path + set_slashes_based_on_os() + file + '.xml', shell=True)
-		except Exception as exception:
-			print('[~] ',exception)
-			print('[-] Unable to execute command!')
-			exit()
+		conversion_success = convert(path,file)
+	return conversion_success
 
 #correct structure of the data field
 def correct_data_field_structure(event):
@@ -95,7 +99,6 @@ def correct_data_field_structure(event):
 
 def validate_event(event):
 	#print the log that is parsed from XML before editing anything
-	#print(event)
 	if ('EventData' in event['Event']) and not (event['Event']['EventData'] == None):
 		if ('Data' in event['Event']['EventData']) and not (event['Event']['EventData']['Data'] == None):
 			if not ('@Name' in event['Event']['EventData']['Data']):
@@ -111,10 +114,6 @@ def validate_event(event):
 			except:
 				group_data = {'@Qualifiers': 'Unknown', '#text': event['Event']['System']['EventID']}
 				event['Event']['System']['EventID'] = group_data
-
-	#print the event log that is not being sent to ELK
-	# print(event)
-
 	return event
 
 def push_to_elk(ip,port,index,user,pwd,bulk,scheme):
@@ -127,7 +126,7 @@ def push_to_elk(ip,port,index,user,pwd,bulk,scheme):
 		helpers.bulk(elk, bulk)
 		return True
 	except Exception as exception:
-		print('[~] ELK ingestion error')
+		print('[INFO] ELK ingestion error')
 		print(exception)
 		return False
 
@@ -141,126 +140,112 @@ def send_now(ip,port,index,user,pwd,bulk,scheme):
 		else:
 			return []
 
-
-def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
+def process_file(action,path,ip,port,file,index,user,pwd,size,scheme):
 	bulk = []
 	successful_events = 0
+	with open(path+check_os("slashes")+file,'r', encoding='iso-8859-15') as opened_file:
+		eventlog_maker = ""
+		for line in opened_file:
+			# Joins all broken XML parts to form one complete eventlog!
+			if not ('<Event' in eventlog_maker and '</Event>' in eventlog_maker):
+				try:
+					line = line.replace("\n","")
+					line = line.replace("\t","")
+					line = line.replace("\r","")
+					eventlog_maker+=line
+					if not ('<Event' in eventlog_maker and '</Event>' in eventlog_maker):
+						continue
+				except Exception as exception:
+					print(f'[ERROR] Exception {exception} was generated while making a complete log from file {file}')
+					print(f'[INFO] During the conversion, the following line caused issue {line}')
+					status_details['files']['failed']['count'] += 1
+					status_details['files']['failed']['files'][file] = exception
+			eventlog = eventlog_maker
+			eventlog_maker = ""
+			try:
+				eventlog = xmltodict.parse(eventlog)
+			except Exception as exception:
+				print(f'[ERROR] Exception {exception} was generated while converting log to dict type from {file}')
+				print(f'[INFO] During the conversion, the following log caused issue {eventlog}')
+				status_details['files']['failed']['count'] += 1
+				status_details['files']['failed']['files'][file] = exception
+			eventlog = json.loads(json.dumps(eventlog))
+			eventlog = validate_event(eventlog)
+			eventlog = correct_data_field_structure(eventlog)
+			successful_events=successful_events+1
+			if action == 'send' or action == 'auto':
+				bulk.append({
+					"_index": index,
+					"_type": index,
+					"@timestamp": eventlog['Event']['System']['TimeCreated']['@SystemTime'],
+					"body": eventlog
+					})
+				if (len(bulk) == size):
+					print(f'[INFO] Time Passed: {datetime.now()-status_details["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
+					bulk = send_now(ip,port,index,user,pwd,bulk,scheme)
+			elif action == 'json':
+				print(json.dumps(eventlog, indent=4))
+	status_details['files']['successful']['count'] += 1
+	status_details['files']['successful']['files'][file] = ''
+	print(f'[INFO] Elapsed Time: {datetime.now()-status_details["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
+	bulk = send_now(ip,port,index,user,pwd,bulk,scheme)
+	print('[SUCCESS] Successfully processed the logs of file')
+
+def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 	#define scope of files for converting xml to json
 	if file == '*':
 		for file in os.listdir(path):
 			if file.endswith('.xml'):
-				try:
-					with open(path+set_slashes_based_on_os()+file) as opened_file:
-						eventlog_maker = ""
-						for eventlog in opened_file:
-							# Joins all broken XML parts to form one complete eventlog!
-							eventlog_maker+=eventlog
-							if not ('<Event' in eventlog_maker and '</Event>' in eventlog_maker):
-								continue
-							eventlog = eventlog_maker
-							eventlog = json.loads(json.dumps(xmltodict.parse(eventlog)))
-							eventlog = validate_event(eventlog)
-							eventlog = correct_data_field_structure(eventlog)
-							successful_events=successful_events+1
-							if action == 'send':
-								bulk.append({
-									"_index": index,
-									"_type": index,
-									"@timestamp": eventlog['Event']['System']['TimeCreated']['@SystemTime'],
-									"body": eventlog
-									})
-								if (len(bulk) == size):
-									print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
-									bulk = send_now(ip,port,index,user,pwd,bulk,scheme)
-							elif action == 'json':
-								print(json.dumps(eventlog, indent=4))
-							eventlog_maker = ""
-					global_vars['files']['successful']['count'] += 1
-					global_vars['files']['successful']['files'][file] = ''
-				except Exception as e:
-					print(f'[-] Exception {e} was generated for file {file}')
-					global_vars['files']['unsuccessful']['count'] += 1
-					global_vars['files']['unsuccessful']['files'][file] = e
+				process_file(action,path,ip,port,file,index,user,pwd,size,scheme)
 	else:
 		if file.endswith('.xml'):
-			try:
-				with open(path+set_slashes_based_on_os()+file) as opened_file:
-						eventlog_maker = ""
-						for eventlog in opened_file:
-							# Joins all broken XML parts to form one complete eventlog!
-							eventlog_maker+=eventlog
-							if not ('<Event' in eventlog_maker and '</Event>' in eventlog_maker):
-								continue
-							eventlog = eventlog_maker
-							eventlog = json.loads(json.dumps(xmltodict.parse(eventlog)))
-							eventlog = validate_event(eventlog)
-							eventlog = correct_data_field_structure(eventlog)
-							successful_events=successful_events+1
-							if action == 'send':
-								bulk.append({
-									"_index": index,
-									"_type": index,
-									"@timestamp": eventlog['Event']['System']['TimeCreated']['@SystemTime'],
-									"body": eventlog
-									})
-								if (len(bulk) == size):
-									print(f'[~] Time Passed: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
-									bulk = send_now(ip,port,index,user,pwd,bulk,scheme)
-							elif action == 'json':
-								print(json.dumps(eventlog, indent=4))
-							eventlog_maker = ""
-				global_vars['files']['successful']['count'] += 1
-				global_vars['files']['successful']['files'][file] = ''
-			except Exception as e:
-				print(f'[-] Exception {e} was generated for file {file} at line_num {line_num}')
-				global_vars['files']['unsuccessful']['count'] += 1
-				global_vars['files']['unsuccessful']['files'][file] = e
-	print(f'[~] Elapsed Time: {datetime.now()-global_vars["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
-	bulk = send_now(ip,port,index,user,pwd,bulk,scheme)
-	print('[+] Successfully processed the logs of file')
+			process_file(action,path,ip,port,file,index,user,pwd,size,scheme)
 
 def process(action,path,ip,port,file,index,user,pwd,size,scheme):
+	index = index.lower()
 	if action == 'xml':
 		evt_to_xml(path,file)
 	if (action == 'send') or (action == 'json'):
 		xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme)
 	if (action == 'auto'):
+		print("[CAUTION] AUTO only works with windows!")
 		evt_to_xml(path,file)
 		if not file == '*':
-			file = file + '.xml'
+			if not file.endswith('.xml'):
+				file = file + '.xml'
 		xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme)
 
 #Perform a sanity check on log path and IP address provided by user
 def sanity_check(action,path,ip,file,scheme):
 	if not action or (action != 'xml' and action != 'send' and action != 'json' and action != 'auto'):
-		print('[-] Please specify a valid action i.e. xml, send, json, auto')
+		print('[ERROR] Please specify a valid action i.e. xml, send, json, auto')
 		exit()
 	if not path:
-		print('[-] Excavator needs to know the path to logs')
+		print('[ERROR] Excavator needs to know the path to logs')
 		exit()
 	elif not os.path.isdir(''+path):
-		print('[-] Specified path does not exist')
+		print('[ERROR] Specified path does not exist')
 		exit()
 	if file != '*':
-		if not os.path.isfile(path + set_slashes_based_on_os() + file):
-			print('[-] Specified file does not exist')
+		if not os.path.isfile(path + check_os("slashes") + file):
+			print('[ERROR] Specified file does not exist')
 			exit()
 	if not ip and (action=='auto' or action=='send'):
-		print('[-] IP not specified')
+		print('[ERROR] IP not specified')
 		exit()
 	elif ip:
 		sanity = re.match(r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}", ip)
 		if not (bool(sanity) and all(map(lambda n: 0 <= int(n) <= 255, sanity.groups()))):
-			print('[-] Invalid IP address!')
+			print('[ERROR] Invalid IP address!')
 			exit()
 	if scheme and not (scheme == 'http' or scheme == 'https'):
-		print('[-] Proper scheme not defined.')
+		print('[ERROR] Invalid scheme!')
 		exit()
 
 #main
 if __name__ == '__main__':
-	global_vars["time_start"] = datetime.now()
-	print(f'[~] Time of start: {global_vars["time_start"]}')
+	status_details["time_start"] = datetime.now()
+	print(f'[INFO] Time of start: {status_details["time_start"]}')
 	parser = argparse.ArgumentParser('Excavator.py')
 	parser.add_argument('-m', metavar='<action>', type=str, help='auto, json, send, xml')
 	parser.add_argument('-p', metavar='<path>', type=str, help='path to Evtx files')
@@ -279,7 +264,3 @@ if __name__ == '__main__':
 	sanity_check(args.m,args.p,args.ip,args.f,args.scheme)
 	process(args.m,args.p,args.ip,args.port,args.f,args.i,args.user,args.pwd,args.s,args.scheme)
 	summarize()
-	print(f'[~] Time of start: {global_vars["time_start"]}')
-	global_vars["time_end"] = datetime.now()
-	print(f'[~] Time end: {global_vars["time_end"]}')
-	print(f'[~] Time difference: {global_vars["time_end"]-global_vars["time_start"]}')
