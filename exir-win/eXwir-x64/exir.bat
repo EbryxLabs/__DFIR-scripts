@@ -65,3 +65,5 @@ for /f "tokens=3" %%A in ('reg query "HKLM\Software\Microsoft\Windows NT\Current
 	)
 )
 REM collected Powershell log file for AD as well!
+dir /r /s C:\ | findstr /r "$DATA Directory" >> C:\artifacts\%host%_ads.txt
+REM successfully collected names of all ADS!
