@@ -39,7 +39,7 @@ for /f "tokens=3" %%A in ('reg query "HKLM\Software\Microsoft\Windows NT\Current
 	if exist %%A\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadline\ (
 		for /f "tokens=3 delims=\" %%a in ('echo %%A') do (
 			mkdir C:\artifacts\Powershell\PowerShell_history\%%a
-			copy %%A\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history*.txt C:\artifacts\Powershell\PowerShell_history\%%a\
+			copy %%A\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadline\ConsoleHost_history* C:\artifacts\Powershell\PowerShell_history\%%a\
 		)
 	)
 )
@@ -49,10 +49,19 @@ for /f "tokens=3" %%A in ('reg query "HKLM\Software\Microsoft\Windows NT\Current
 	if exist %%A\Documents\ (
 		for /f "tokens=3 delims=\" %%a in ('echo %%A') do (
 			mkdir C:\artifacts\Powershell\PowerShell_transcripts\%%a
-			copy %%A\Documents\PowerShell_transcript*.txt C:\artifacts\Powershell\PowerShell_transcripts\%%a\
+			copy %%A\Documents\PowerShell_transcript* C:\artifacts\Powershell\PowerShell_transcripts\%%a\
 		)
 	)
 )
 REM Powershell transcript logs fetched successfully!
 systeminfo >> C:\artifacts\%host%_systeminfo.txt
 REM collected system information successfully
+for /f "tokens=3" %%A in ('reg query "HKLM\Software\Microsoft\Windows NT\CurrentVersion\ProfileList" /s /v ProfileImagePath ^| find "REG_EXPAND_SZ"') do (
+	if exist %%A\AppData\Local\Microsoft\AzureAD\Powershell\ (
+		for /f "tokens=3 delims=\" %%a in ('echo %%A') do (
+			mkdir C:\artifacts\Powershell\PowerShell_log_AD\%%a
+			copy %%A\AppData\Local\Microsoft\AzureAD\Powershell\AzureADPowershell* C:\artifacts\Powershell\PowerShell_log_AD\%%a\
+		)
+	)
+)
+REM collected Powershell log file for AD as well!
