@@ -38,15 +38,6 @@ if %OS%==64BIT (
 	.\PsLoggedon64.exe -accepteula > C:\artifacts-%host%\%host%_64bit_psloggedon.txt
 )
 REM psloggedon command executed successfully!
-if %OS%==32BIT (
-	echo "OS is 32 bit"
-	.\autorunsc.exe -accepteula -nobanner * -a * -h -s -c -o C:\artifacts-%host%\%host%_32bit_autoruns.csv
-)
-if %OS%==64BIT (
-	echo "OS is 64 bit"
-	autorunsc64.exe -accepteula -nobanner * -a * -h -s -c -o C:\artifacts-%host%\%host%_64bit_autoruns.csv
-)
-REM Autoruns executed successfully!
 netstat -anb > C:\artifacts-%host%\%host%_ntst-anb.txt
 REM netstat command executed successfully!
 ipconfig /displaydns > C:\artifacts-%host%\%host%_dspdns.txt
@@ -106,3 +97,14 @@ for /f "tokens=3" %%A in ('reg query "HKLM\Software\Microsoft\Windows NT\Current
 REM collected Powershell log file for AD as well!
 dir /r /s C:\ | findstr /r "$DATA Directory" >> C:\artifacts-%host%\%host%_ads.txt
 REM successfully collected names of all ADS!
+if %OS%==32BIT (
+	echo "OS is 32 bit"
+	.\autorunsc.exe -accepteula -nobanner * -a * -h -s -c -o C:\artifacts-%host%\%host%_32bit_autoruns.csv
+)
+if %OS%==64BIT (
+	echo "OS is 64 bit"
+	autorunsc64.exe -accepteula -nobanner * -a * -h -s -c -o C:\artifacts-%host%\%host%_64bit_autoruns.csv
+)
+REM Autoruns executed successfully!
+.\WinAudit.exe /r=gsoPxuTUeERNtzDaIbMpmidcSArCOHG /f=C:\artifacts-%host%\%host%_winaudit-report.html
+REM WinAudit.exe executed successfully
