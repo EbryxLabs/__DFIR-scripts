@@ -1,5 +1,15 @@
 @ECHO ON
 
+
+REM #########################################################
+REM #	Sample Execution command 1. Non-intrusive mode		#
+REM # 	exir.bat											#
+REM #				##########################				#
+REM # 	Sample Execution command 2. Medium intrusive mode	#
+REM # 	exir.bat medium										#
+REM #########################################################
+
+
 set host=%COMPUTERNAME%
 mkdir C:\artifacts-%host%
 mkdir C:\artifacts-%host%\%host%_evtx
@@ -20,22 +30,22 @@ for /f %%A in ('wmic useraccount get sid') DO (
 REM listed all sysinternals utilities entries
 if %OS%==32BIT (
 	echo "OS is 32 bit"
-	.\logonsessions.exe -accepteula -c > C:\artifacts-%host%\%host%_32bit_logonssns-c.txt
-	.\logonsessions.exe -accepteula -p > C:\artifacts-%host%\%host%_32bit_logonssns-p.txt
+	resources\logonsessions\.\logonsessions.exe -accepteula -c > C:\artifacts-%host%\%host%_32bit_logonssns-c.txt
+	resources\logonsessions\.\logonsessions.exe -accepteula -p > C:\artifacts-%host%\%host%_32bit_logonssns-p.txt
 )
 if %OS%==64BIT (
 	echo "OS is 64 bit"
-	.\logonsessions64.exe -accepteula -c > C:\artifacts-%host%\%host%_64bit_logonssns-c.txt
-	.\logonsessions64.exe -accepteula -p > C:\artifacts-%host%\%host%_64bit_logonssns-p.txt
+	resources\logonsessions\.\logonsessions64.exe -accepteula -c > C:\artifacts-%host%\%host%_64bit_logonssns-c.txt
+	resources\logonsessions\.\logonsessions64.exe -accepteula -p > C:\artifacts-%host%\%host%_64bit_logonssns-p.txt
 )
 REM logonssessions command executed successfully!
 if %OS%==32BIT (
 	echo "OS is 32 bit"
-	.\PsLoggedon.exe -accepteula > C:\artifacts-%host%\%host%_32bit_psloggedon.txt
+	resources\psloggedon\.\PsLoggedon.exe -accepteula > C:\artifacts-%host%\%host%_32bit_psloggedon.txt
 )
 if %OS%==64BIT (
 	echo "OS is 64 bit"
-	.\PsLoggedon64.exe -accepteula > C:\artifacts-%host%\%host%_64bit_psloggedon.txt
+	resources\psloggedon\.\PsLoggedon64.exe -accepteula > C:\artifacts-%host%\%host%_64bit_psloggedon.txt
 )
 REM psloggedon command executed successfully!
 netstat -anb > C:\artifacts-%host%\%host%_ntst-anb.txt
@@ -84,7 +94,7 @@ for /f "tokens=3" %%A in ('reg query "HKLM\Software\Microsoft\Windows NT\Current
 	)
 )
 REM Powershell transcript logs fetched successfully!
-systeminfo >> C:\artifacts-%host%\%host%_systeminfo.txt
+systeminfo > C:\artifacts-%host%\%host%_systeminfo.txt
 REM collected system information successfully
 for /f "tokens=3" %%A in ('reg query "HKLM\Software\Microsoft\Windows NT\CurrentVersion\ProfileList" /s /v ProfileImagePath ^| find "REG_EXPAND_SZ"') do (
 	if exist %%A\AppData\Local\Microsoft\AzureAD\Powershell\ (
@@ -95,16 +105,32 @@ for /f "tokens=3" %%A in ('reg query "HKLM\Software\Microsoft\Windows NT\Current
 	)
 )
 REM collected Powershell log file for AD as well!
-dir /r /s C:\ | findstr /r "$DATA Directory" >> C:\artifacts-%host%\%host%_ads.txt
-REM successfully collected names of all ADS!
-if %OS%==32BIT (
-	echo "OS is 32 bit"
-	.\autorunsc.exe -accepteula -nobanner * -a * -h -s -c -o C:\artifacts-%host%\%host%_32bit_autoruns.csv
+if [%1]==[] (
+	echo "Will not be running in any mode other than normal..."
+	goto DONE
+) else (
+	if NOT %1==medium ( 
+		echo "Parameter %1 passed is not correct"...
+		echo "Will not be running in medium mode..."
+		goto DONE 
+	) else (
+		echo "Will be executing in medium mode..."
+		timeout 3
+		dir /r /s C:\ | findstr /r "$DATA Directory" >> C:\artifacts-%host%\%host%_ads.txt
+		REM successfully collected names of all ADS!
+		if %OS%==32BIT (
+			echo "OS is 32 bit"
+			resources\autoruns\.\autorunsc.exe -accepteula * -a * -h -s -c -o C:\artifacts-%host%\%host%_32bit_autoruns.csv
+		)
+		if %OS%==64BIT (
+			echo "OS is 64 bit"
+			resources\autoruns\.\autorunsc64.exe -accepteula * -a * -h -s -c -o C:\artifacts-%host%\%host%_64bit_autoruns.csv
+		)
+		REM Autoruns executed successfully
+		mkdir C:\artifacts-%host%\winaudit
+		resources\winaudit\.\WinAudit.exe /r=gsoPxuTUeERNtzDaIbMpmidcSArCOHG /f=C:\artifacts-%host%\winaudit\%host%_winaudit-report.html /l=C:\artifacts-%host%\winaudit\%host%_winaudit.log /T=datetime
+		REM WinAudit.exe executed successfully
+	)
 )
-if %OS%==64BIT (
-	echo "OS is 64 bit"
-	autorunsc64.exe -accepteula -nobanner * -a * -h -s -c -o C:\artifacts-%host%\%host%_64bit_autoruns.csv
-)
-REM Autoruns executed successfully!
-.\WinAudit.exe /r=gsoPxuTUeERNtzDaIbMpmidcSArCOHG /f=C:\artifacts-%host%\%host%_winaudit-report.html
-REM WinAudit.exe executed successfully
+:DONE
+echo Done...
