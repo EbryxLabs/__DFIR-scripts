@@ -143,6 +143,8 @@ def send_now(ip,port,index,user,pwd,bulk,scheme):
 def process_file(action,path,ip,port,file,index,user,pwd,size,scheme):
 	bulk = []
 	successful_events = 0
+	fileName = file.split('.')[0]
+
 	with open(path+check_os("slashes")+file,'r', encoding='iso-8859-15') as opened_file:
 		eventlog_maker = ""
 		for line in opened_file:
@@ -169,6 +171,10 @@ def process_file(action,path,ip,port,file,index,user,pwd,size,scheme):
 				print(f'[INFO] During the conversion, the following log caused issue {eventlog}')
 				status_details['files']['failed']['count'] += 1
 				status_details['files']['failed']['files'][file] = exception
+				with open(index+"-"+fileName+"-logs.xml", "a") as crashFileHandle:
+					crashFileHandle.write(eventlog+"\n")
+				continue
+							
 			eventlog = json.loads(json.dumps(eventlog))
 			eventlog = validate_event(eventlog)
 			eventlog = correct_data_field_structure(eventlog)
@@ -190,6 +196,7 @@ def process_file(action,path,ip,port,file,index,user,pwd,size,scheme):
 	print(f'[INFO] Elapsed Time: {datetime.now()-status_details["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
 	bulk = send_now(ip,port,index,user,pwd,bulk,scheme)
 	print('[SUCCESS] Successfully processed the logs of file')
+
 
 def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 	#define scope of files for converting xml to json
