@@ -164,15 +164,15 @@ def correct_data_field_structure(event):
 				field_name = event['Event']['EventData']['Data'][field]['@Name']
 				already_done = False
 				try:
-					# to parse strings containing ? in them
-					temp = event['Event']['EventData']['Data'][field]['#text'].replace("?", "")
-					# to parse strings containing nanoseconds in them
-					if '.' in temp and temp[-1] == 'Z' and len(temp) - temp.index('.') - 2 == 9 :
-						temp = temp[:temp.index('.') + 7] + 'Z'
-					if 'time' in field_name.lower() and is_date(temp):
-						text = get_date(temp)
-						already_done = True
-				except: text = '-'
+					if 'time' in field_name.lower():
+						# to parse strings containing ? in them
+						temp = event['Event']['EventData']['Data'][field]['#text'].replace("?", "")
+						# to parse strings containing nanoseconds in them
+						if '.' in temp and temp[-1] == 'Z' and len(temp) - temp.index('.') - 2 == 9 : temp = temp[:temp.index('.') + 7] + 'Z'
+						if is_date(temp):
+							text = get_date(temp)
+							already_done = True
+				except: pass
 				if not already_done:
 					try: text = event['Event']['EventData']['Data'][field]['#text']
 					except: text = '-'
