@@ -1,15 +1,19 @@
+#!/usr/bin/env python3
 #Excavator.py
 
 import os
 import re
 import sys
 import json
+import logging
+import colorlog
 import argparse
 import xmltodict
 from pprint import pprint
 from datetime import datetime
 from subprocess import check_output
 from elasticsearch import Elasticsearch, helpers
+
 
 ##global vars##
 status_details = {
@@ -30,17 +34,52 @@ status_details = {
 		}
 	}
 }
+default_args = {
+	'elasticsearch': {
+		'ip': '127.0.0.1',
+		'port': 9200
+	},
+	"date_fmts": [
+		"%m/%d/%Y %H:%M:%S %p",
+		"%m/%d/%Y %H:%M %p",
+		"%Y-%m-%dT%H:%M:%S.%fZ"
+	]
+}
 ###
 
+
+def setup_logger():
+	formatter = colorlog.ColoredFormatter(
+		"%(log_color)s%(asctime)s:%(levelname)s:%(message)s",
+		datefmt='%D'
+	)
+
+	log = logging.getLogger()
+
+	handler2 = logging.FileHandler('.output.log')
+	handler = logging.StreamHandler()
+	handler.setFormatter(formatter)
+	log.addHandler(handler)
+	log.addHandler(handler2)
+	log.setLevel(logging.DEBUG)
+
+	return log
+
+
 def summarize():
-	print(f"[INFO] Start Time: {status_details['time_start']}")
+	print("[INFO] Start Time: {}".format(status_details['time_start']))
 	status_details["time_end"] = datetime.now()
-	print(f"[INFO] End Time: {status_details['time_end']}")
-	print(f"[INFO] Files sucessfully ingested: {status_details['files']['successful']['count']}")
-	print(f"[INFO] Files failed during ingestion: {status_details['files']['failed']['count']}")
-	print(f"[INFO] Following is the list of successful files {status_details['files']['successful']['files']}")
-	print(f"[INFO] Following is the list of failed files {status_details['files']['failed']['files']}")
-	print(f'[INFO] Time difference: {status_details["time_end"]-status_details["time_start"]}')
+	print("[INFO] End Time: {}".format(status_details['time_end']))
+	print("[INFO] Files sucessfully ingested: {}".format(status_details['files']['successful']['count']))
+	print("[INFO] Files failed during ingestion: {}".format(status_details['files']['failed']['count']))
+	print("[INFO] Following is the list of successful files and logs count")
+	pprint(status_details['files']['successful']['files'])
+	print("[INFO] Following is the list of failed files")
+	pprint(status_details['files']['failed']['files'])
+	print("[INFO] Start Time: {}".format(status_details['time_start']))
+	print("[INFO] End Time: {}".format(status_details['time_end']))
+	print("[INFO] Time difference: {}".format(status_details["time_end"]-status_details["time_start"]))
+
 
 #perform a sanity check on OS
 def check_os(condition):
@@ -56,6 +95,7 @@ def check_os(condition):
 			slash = '/'
 		return slash
 
+
 def convert(path,file):
 	print('[SUCCESS] ' + file)
 	try:
@@ -65,6 +105,7 @@ def convert(path,file):
 		print('[INFO] ', exception)
 		print('[ERROR] Unable to execute command!')
 		return False
+
 
 #convert evtx files to xml
 def evt_to_xml(path,file):
@@ -80,6 +121,40 @@ def evt_to_xml(path,file):
 		conversion_success = convert(path,file)
 	return conversion_success
 
+
+def is_date(mstr):
+		validate = False
+		for fmt in default_args.get("date_fmts"):
+			try:
+				datetime.strptime(mstr, fmt)
+				validate = True
+				break
+			except Exception as e: pass
+				# print("[Warning] Exception {} occurred in is_date while validating date {}...".format(e, mstr))
+				# print("[Warning] But continuing")
+				# sys.exit()
+		if not validate:
+			print("[Warning] Exception occurred in is_date while validating date {}...".format(mstr))
+		return validate
+
+
+def get_date(mstr):
+		valid_date = "-"
+		validate = False
+		for fmt in default_args.get("date_fmts"):
+			try:
+				valid_date = datetime.strptime(mstr, fmt)
+				validate = True
+				break
+			except Exception as e: pass
+				# print("[Warning] Exception {} occurred in get_date while returning date {}...".format(e, mstr))
+				# print("[Warning] But continuing")
+				# sys.exit()
+		if not validate:
+			print("[Warning] Exception occurred in is_date while validating date {}...".format(mstr))
+		return valid_date
+
+
 #correct structure of the data field
 def correct_data_field_structure(event):
 	data = {}
@@ -87,15 +162,26 @@ def correct_data_field_structure(event):
 		if ('Data' in event['Event']['EventData']) and not (event['Event']['EventData']['Data'] == None):
 			for field in range(0,len(event['Event']['EventData']['Data'])):
 				field_name = event['Event']['EventData']['Data'][field]['@Name']
+				already_done = False
 				try:
-					text = event['Event']['EventData']['Data'][field]['#text']
-				except:
-					text = '-'
+					# to parse strings containing ? in them
+					temp = event['Event']['EventData']['Data'][field]['#text'].replace("?", "")
+					# to parse strings containing nanoseconds in them
+					if '.' in temp and temp[-1] == 'Z' and len(temp) - temp.index('.') - 2 == 9 :
+						temp = temp[:temp.index('.') + 7] + 'Z'
+					if 'time' in field_name.lower() and is_date(temp):
+						text = get_date(temp)
+						already_done = True
+				except: text = '-'
+				if not already_done:
+					try: text = event['Event']['EventData']['Data'][field]['#text']
+					except: text = '-'
 				data[field_name] = text
 	except:
 		return event
 	event['Event']['EventData']['Data'] = data	
 	return event
+
 
 def validate_event(event):
 	#print the log that is parsed from XML before editing anything
@@ -116,6 +202,7 @@ def validate_event(event):
 				event['Event']['System']['EventID'] = group_data
 	return event
 
+
 def push_to_elk(ip,port,index,user,pwd,bulk,scheme):
 	elk = None
 	if(user == None) and (pwd == None):
@@ -130,6 +217,7 @@ def push_to_elk(ip,port,index,user,pwd,bulk,scheme):
 		print(exception)
 		return False
 
+
 def send_now(ip,port,index,user,pwd,bulk,scheme):
 	logs_sent = False
 	#keep looping until the bulked logs have not been sent successfully
@@ -139,6 +227,7 @@ def send_now(ip,port,index,user,pwd,bulk,scheme):
 			continue
 		else:
 			return []
+
 
 def process_file(action,path,ip,port,file,index,user,pwd,size,scheme):
 	bulk = []
@@ -178,6 +267,7 @@ def process_file(action,path,ip,port,file,index,user,pwd,size,scheme):
 			eventlog = json.loads(json.dumps(eventlog))
 			eventlog = validate_event(eventlog)
 			eventlog = correct_data_field_structure(eventlog)
+			eventlog['file_name'] = file
 			successful_events=successful_events+1
 			if action == 'send' or action == 'auto':
 				bulk.append({
@@ -192,7 +282,7 @@ def process_file(action,path,ip,port,file,index,user,pwd,size,scheme):
 			elif action == 'json':
 				print(json.dumps(eventlog, indent=4))
 	status_details['files']['successful']['count'] += 1
-	status_details['files']['successful']['files'][file] = ''
+	status_details['files']['successful']['files'][file] = successful_events
 	print(f'[INFO] Elapsed Time: {datetime.now()-status_details["time_start"]} -- Sending Logs from {file} to ELK: {successful_events}')
 	bulk = send_now(ip,port,index,user,pwd,bulk,scheme)
 	print('[SUCCESS] Successfully processed the logs of file')
@@ -208,6 +298,7 @@ def xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme):
 		if file.endswith('.xml'):
 			process_file(action,path,ip,port,file,index,user,pwd,size,scheme)
 
+
 def process(action,path,ip,port,file,index,user,pwd,size,scheme):
 	index = index.lower()
 	if action == 'xml':
@@ -221,6 +312,7 @@ def process(action,path,ip,port,file,index,user,pwd,size,scheme):
 			if not file.endswith('.xml'):
 				file = file + '.xml'
 		xml_to_json_to_es(action,path,ip,port,file,index,user,pwd,size,scheme)
+
 
 #Perform a sanity check on log path and IP address provided by user
 def sanity_check(action,path,ip,file,scheme):
@@ -249,15 +341,17 @@ def sanity_check(action,path,ip,file,scheme):
 		print('[ERROR] Invalid scheme!')
 		exit()
 
+
 #main
 if __name__ == '__main__':
+	# logger = setup_logger()
 	status_details["time_start"] = datetime.now()
 	print(f'[INFO] Time of start: {status_details["time_start"]}')
 	parser = argparse.ArgumentParser('Excavator.py')
 	parser.add_argument('-m', metavar='<action>', type=str, help='auto, json, send, xml')
 	parser.add_argument('-p', metavar='<path>', type=str, help='path to Evtx files')
-	parser.add_argument('-ip', metavar='<ip>', help='elasticsearch IP')
-	parser.add_argument('-port', metavar='<port>', type=int, default=9200, help='elasticsearch port')
+	parser.add_argument('-ip', metavar='<ip>', default=default_args.get('elasticsearch').get('ip'), help='elasticsearch IP. Default is {}'.format(default_args.get('elasticsearch').get('ip')))
+	parser.add_argument('-port', metavar='<port>', type=int, default=default_args.get('elasticsearch').get('port'), help='elasticsearch port. Default is {}'.format(default_args.get('elasticsearch').get('port')))
 	parser.add_argument('-f', metavar='<file>', type=str, default='*', help='evtx file to process. Only use for single file')
 	parser.add_argument('-i', metavar='<index>', type=str, default='excavator', help='name of ELK index')
 	parser.add_argument('-user', metavar='<user>', type=str, help='username of ELK for authorization')
