@@ -99,7 +99,8 @@ def check_os(condition):
 def convert(path,file):
 	print('[SUCCESS] ' + file)
 	try:
-		check_output('wevtutil qe ' + path + check_os("slashes") + file + ' /lf:true /f:XML >> ' + path + check_os("slashes") + file + '.xml', shell=True)
+		# check_output('wevtutil qe ' + path + check_os("slashes") + file + ' /lf:true /f:XML >> ' + path + check_os("slashes") + file + '.xml', shell=True)
+		check_output('wevtutil qe "{0}{1}{2}" /lf:true /f:XML >> "{0}{1}{2}.xml"'.format(path, check_os('slashes'), file), shell=True)
 		return True
 	except Exception as exception:
 		print('[INFO] ', exception)

@@ -13,8 +13,9 @@
 #If we comment line 110 .. It'll just check for the hash without uploading\
 #If we comment, 106 to 109 .. it'll upload everything .. and check for the results
 
-# 3. exir-win.bat
+# 3. eXir-win.bat
 #Original Author: Ahmad @ Ebryx LLC\
+#Contributor: heyibrahimkhan @ Ebryx LLC\
 #Description: Let's just say its FASTIRfor Windows OS\
 #Usage: run with admin exir<version>.bat
 
@@ -27,4 +28,24 @@
 #Original Author: UK @ Ebryx LLC\
 #Description: A script to ingest IOC scanner result files to ES in bulk\
 #Usage: lies.py\
+#Change variable parameters in the script enclosed in <>
+
+# 6. eXir-lin-helper
+#Original Author: heyibrahimkhan @ Ebryx LLC\
+#Description: A script to help with output of eXir by neatly highlighting the results
+#Usage: /bin/bash find_interesting.sh
+#Read the script to see the params details
+
+# 7. eXir-win-helper
+#Original Author: heyibrahimkhan @ Ebryx LLC\
+#Description: A script to help with output of eXir-win by converting it to CSV
+#Usage: script.py
+#Change variable parameters in the script enclosed in <>
+
+# 8. dbc-helper
+#Original Author: heyibrahimkhan @ Ebryx LLC\
+#Description: Scripts to help with DeepBlueCLI bulk execution
+#Usage: 
+	- preprocess.ps1
+	- execute-custom.ps1
 #Change variable parameters in the script enclosed in <>
