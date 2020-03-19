@@ -60,7 +60,4 @@
 
 #Original Author: SyeedHasan @ Ebryx LLC\
 #Description: Calculated hashes for files and run a scan against VT
-
-# Usage:
-
-    - python vetter.py -h
+#Usage: python vetter.py -h
